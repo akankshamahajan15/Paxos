@@ -3,7 +3,6 @@ Student ID : 112074564
 Course :  CSE535(Fall 2018) Asynchronous Systems
 HomeWork Assignment 4
 
-Collaborated with : 112079392, 112077826, 111971057
 In this assignment correctness and performance are tested on the 2 Paxos:
 1) Basic Paxos
 2) Basic Paxos with preemption
