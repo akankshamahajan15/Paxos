@@ -1,0 +1,333 @@
+
+import sys
+import os
+import random
+import time
+import matplotlib.pyplot as plt1
+import matplotlib.pyplot as plt2
+import numpy as np
+from statistics import stdev
+from subprocess import call
+from statistics import stdev
+BasicPaxos = import_da('basic_paxos')
+PreemptPaxos = import_da('preempt_paxos')
+
+class Monitor(process):
+    def setup(learners:set, acceptors:set, proposers:set):
+        self.proposerVal = set()
+        self.acceptedVal = set()
+        self.learnerVal = set()
+
+    def run():
+        -- yieldpt
+        await(received(('done',), from_= parent()))
+        checkAgreement()
+        checkValidity()
+        checkTermination()
+
+    def receive (msg= ('learned', n, v), from_=p):
+        if p in learners:
+            learnerVal.add(v)
+
+    
+    def receive (msg= ('PropsedValue', n, v), from_=p):
+        if p in proposers:
+            proposerVal.add(v)
+
+    def receive (msg= ('AcceptedValue', n, v), from_=p):
+        if p in acceptors:
+            acceptedVal.add(v)
+
+    def checkAgreement():
+        if len(learnerVal) == 1:
+            print(' Consensus value : ', learnerVal, "\n")
+            print(' Agreement exists in this consensus\n')
+        else:
+            print(' Agreement has been violated\n')
+
+    def checkValidity():
+        if proposerVal >= learnerVal:
+            print(' Validity exists consensus\n')     
+        else:
+            print(' Validity has been violated\n')
+
+    def checkTermination():
+        if len(learnerVal) != 0:
+            print(' Temination is successfull in this consensus\n')
+        else:
+            print(' Program didnot terminated  successfully\n')
+
+def main():
+    # python -m da mainpaxos.da nacceptors, nproposers, nlearners, nrun, nlossrate, ndelay, nwaittime, ntp, ntl 
+    nacceptors = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+    nproposers = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+    nlearners  = int(sys.argv[3]) if len(sys.argv) > 3 else 2
+    nrun       = int(sys.argv[4]) if len(sys.argv) > 4 else 1
+    nlossrate  = float(sys.argv[5]) if len(sys.argv) > 5 else 0.5
+    ndelay     = int(sys.argv[6]) if len(sys.argv) > 6 else 5
+    nwaittime  = int(sys.argv[7]) if len(sys.argv) > 7 else 5 
+    ntp        = int(sys.argv[8]) if len(sys.argv) > 8 else 1
+    ntl        = int(sys.argv[9]) if len(sys.argv) > 9 else 10
+
+    file=open("Performance.txt","w")
+
+    print ("\n****************************************************************************************************************\n")
+    print ("******************** Correctness measures ************************************************************************")
+    print (" For Proposers : ", nproposers, " Acceptors : ", nacceptors," Learners : ", nlearners)
+    print (" Message Loss rate : ", nlossrate, " Delay time : ", ndelay, " Wait time : ", nwaittime, "\n")
+    file.write("Proposers : %d Acceptors : %d Learners : %d\n" %(nproposers, nacceptors, nlearners))
+    file.write("Message Loss rate : %f Delay time : %d Wait time %d" %(nlossrate, ndelay, nwaittime))
+    file.write("\n************************************************************************************************************\n")
+
+    cpuStartTime, cpuEndTime, elapsedStartTime, elapsedEndTime = 0, 0, 0, 0
+    
+    #we are ranging the three parameters for five fixed values
+    nLossRateWhole= int (nlossrate*100)
+    nLossRateValue = int(nLossRateWhole/5)
+
+    LossRateCPU = {}
+    LossRateELAPSED = {}
+    ndelayValue=int(ndelay/5)
+    nwaitValue=int(nwaittime/5)
+    LossRateCPU = {}
+    LossRateELAPSED = {}
+    
+    if not os.path.exists("loss_results"):
+        os.mkdir("loss_results")
+    
+    plt1.figure(1)
+    plt2.figure(2)
+
+    AlgoList = [BasicPaxos, PreemptPaxos]
+    print ("\n 1. Varying Message loss and keeping Message delay and Wait time Fixed")
+    print (" Message loss rate varies   from ", float(nlossrate/5), "  to ", float(nlossrate), "\n")
+    file.write("Varying Message loss and keeping Message delay and Wait time Fixed\n")
+
+    for algo in AlgoList:
+        print (" For program : ", algo, " \n")
+        file.write("\nFor Program : %s\n" %algo)
+        LossRateCPU = {}
+        LossRateELAPSED = {}
+        for nLossValue in range(nLossRateValue, nLossRateWhole+1, nLossRateValue):
+            cpuTime, elapsedTime = 0, 0
+            etime1, cputime1 = list(), list()
+            file.write("\nmessage loss : %f \n" %(nLossValue/100))
+            for i in range(nrun):
+                monitor   = new(Monitor, num=1)
+                acceptors = new(algo.Acceptor, num= nacceptors)
+                proposers = new(algo.Proposer, (acceptors, monitor, ntp, nLossValue/100, ndelayValue, nwaitValue), num= nproposers)
+                learners  = new(algo.Learner, num= nlearners)
+
+                setup(monitor, (learners, acceptors, proposers))
+                start(monitor)
+
+                for p in acceptors: setup(p, (learners, monitor, ndelayValue))
+                for p in learners: setup(p, (acceptors, monitor, ntl))
+
+                #Calculate CPU and ELAPSE time
+                cpuStartTime     =  time.process_time()
+                elapsedStartTime =  time.time()
+
+                start(acceptors | proposers | learners)
+                await(each(l in learners, has=received(('learned',), from_=l)))
+
+                send(('done',), to= (acceptors|proposers))
+
+                cpuEndTime     = time.process_time()
+                elapsedEndTime = time.time()
+                
+                etime1.append(elapsedEndTime - elapsedStartTime)
+                cputime1.append(cpuEndTime - cpuStartTime)
+
+                cpuTime     += cpuEndTime - cpuStartTime
+                elapsedTime += elapsedEndTime - elapsedStartTime
+
+                send(('done',), to= monitor)
+
+            cpuTime=float(cpuTime/5)
+            elapsedTime=float(elapsedTime/5)
+            LossRateCPU[nLossValue/100]=cpuTime
+            LossRateELAPSED[nLossValue/100]=elapsedTime
+            file.write (" Avg CPU time : %f\n" %cpuTime)
+            file.write (" Avg Elapsed time : %f\n" %elapsedTime)
+            if nrun != 1:
+                file.write (" Standard devaiton of CPU time : %f" %stdev(cputime1))
+                file.write (" Standard devaiton of Elapsed Time : %f" %stdev(etime1))
+            
+        lists = sorted(LossRateCPU.items()) # sorted by key, return a list of tuples
+        x, y = zip(*lists) # unpack a list of pairs into two tuples
+        plt1.plot(x, y, label="LossRateAvgCPUTime")
+
+        lists2 = sorted(LossRateELAPSED.items()) # sorted by key, return a list of tuples
+        a, b = zip(*lists2) # unpack a list of pairs into two tuples
+        plt2.plot(a, b, label="LossRateAvgElapsedime")
+
+    plt1.legend(["BasicPaxosCPUTime", "BasicPaxosELAPSEDTime", "PremeptionCPUTime", "PreemptionELAPSEDTime"], loc = "upper left",prop= {'size':5})
+    filename = 'loss_results/' + 'LossRate.png'
+    plt1.savefig(filename)
+
+    file.write("\n************************************************************************************************************\n")
+
+    file.flush()
+    
+    if not os.path.exists("delay_results"):
+        os.mkdir("delay_results")
+    plt1.figure()
+    plt2.figure()
+    
+    print ("\n 1. Varying Message delay and keeping Message loss and Wait time Fixed")
+    file.write("\nVarying Message delay and keeping Message loss and Wait time Fixed\n")
+    print (" Message delay varies   from ", ndelay/5, "  to ", ndelay , "\n")
+    for algo in AlgoList:
+        print (" For program : ", algo, " \n")
+        file.write("\nFor Program : %s\n" %algo)
+        LossRateCPU = {}
+        LossRateELAPSED = {}
+        etime1, cputime1 = list(), list()
+        for nDelayValue in range(ndelayValue, ndelay+1, ndelayValue):
+            cpuTime, elapsedTime = 0, 0
+            file.write("\nmessage delay : %d \n" %nDelayValue)
+            for i in range(nrun):
+                monitor   = new(Monitor, num=1)
+                acceptors = new(algo.Acceptor, num= nacceptors)
+                proposers = new(algo.Proposer, (acceptors, monitor, ntp, nLossRateValue/100, nDelayValue, nwaitValue), num= nproposers)
+                learners  = new(algo.Learner, num= nlearners)
+
+                setup(monitor, (learners,acceptors, proposers))
+                start(monitor)
+
+                for p in acceptors: setup(p, (learners, monitor, nDelayValue))
+                for p in learners: setup(p, (acceptors, monitor, ntl))
+
+                #Calculate CPU and ELAPSE time
+                cpuStartTime     =  time.process_time()
+                elapsedStartTime =  time.time()
+                #output(cpuStartTime, elapsedStartTime)
+
+                start(acceptors | proposers | learners)
+                await(each(l in learners, has=received(('learned',), from_=l)))
+
+                send(('done',), to= (acceptors|proposers))
+
+                cpuEndTime     = time.process_time()
+                elapsedEndTime = time.time()
+                etime1.append(elapsedEndTime - elapsedStartTime)
+                cputime1.append(cpuEndTime - cpuStartTime)
+
+                cpuTime     += cpuEndTime - cpuStartTime
+                elapsedTime += elapsedEndTime - elapsedStartTime
+
+                send(('done',), to= monitor)
+
+            cpuTime=float(cpuTime/nrun)
+            elapsedTime=float(elapsedTime/nrun)
+            LossRateCPU[nDelayValue]=cpuTime
+            LossRateELAPSED[nDelayValue]=elapsedTime
+            file.write (" Avg CPU time : %f\n" %cpuTime)
+            file.write (" Avg Elapsed time : %f\n" %elapsedTime)
+            if nrun != 1:
+                file.write (" Standard devaiton of CPU time : %f" %stdev(cputime1))
+                file.write (" Standard devaiton of Elapsed Time : %f" %stdev(etime1))
+            
+        lists = sorted(LossRateCPU.items()) # sorted by key, return a list of tuples
+        x, y = zip(*lists) # unpack a list of pairs into two tuples
+        plt1.plot(x, y, label="MessageDelayAvgCPUTime")
+    
+        lists2 = sorted(LossRateELAPSED.items()) # sorted by key, return a list of tuples
+        a, b = zip(*lists2) # unpack a list of pairs into two tuples
+        plt2.plot(a, b, label="MessageDelayAvgELAPSEDTime")
+
+    #plt1.ylim[0, 0.75]
+    plt1.legend(["BasicPaxosCPUTime", "BasicPaxosELAPSEDTime", "PremeptionCPUTime", "PreemptionELAPSEDTime"], loc = "upper left",prop= {'size':5})
+    filename = 'delay_results/' + 'MessageDelay.png'
+    plt1.savefig(filename)
+
+    file.write("\n************************************************************************************************************\n")
+
+    file.flush()
+  
+    if not os.path.exists("wait_results"):
+        os.mkdir("wait_results")
+    plt1.figure()
+    plt2.figure()
+    print ("\n 1. Varying Wait time and keeping Message loss and Message Delay Fixed")
+    file.write("\nVarying Wait time and keeping Message loss and Message Delay Fixed\n")
+    print (" Wait time varies from ", nwaittime/5, "  to ", nwaittime , "\n")
+    for algo in AlgoList:
+        print (" For program : ", algo, " \n")
+        file.write("\nFor Program : %s\n" %algo)
+        LossRateCPU = {}
+        LossRateELAPSED = {}
+        etime1, cputime1 = list(), list()
+        for nWaitValue in range(nwaitValue, nwaittime+1, nwaitValue):
+            cpuTime, elapsedTime = 0, 0
+            file.write("\nWait time : %d \n" %nWaitValue)
+            for i in range(nrun):
+                monitor   = new(Monitor, num=1)
+                acceptors = new(algo.Acceptor, num= nacceptors)
+                proposers = new(algo.Proposer, (acceptors, monitor, ntp, nLossRateValue/100, ndelayValue, nWaitValue), num= nproposers)
+                learners  = new(algo.Learner, num= nlearners)
+
+                setup(monitor, (learners,acceptors, proposers))
+                start(monitor)
+
+                for p in acceptors: setup(p, (learners, monitor, ndelayValue))
+                for p in learners: setup(p, (acceptors, monitor, ntl))
+
+                #Calculate CPU and ELAPSE time
+                cpuStartTime     =  time.process_time()
+                elapsedStartTime =  time.time()
+                #output(cpuStartTime, elapsedStartTime)
+
+                start(acceptors | proposers | learners)
+                await(each(l in learners, has=received(('learned',), from_=l)))
+
+                #output('done')
+                send(('done',), to= (acceptors|proposers))
+
+                cpuEndTime     = time.process_time()
+                elapsedEndTime = time.time()
+                etime1.append(elapsedEndTime - elapsedStartTime)
+                cputime1.append(cpuEndTime - cpuStartTime)
+                #output(cpuEndTime, elapsedEndTime)
+
+                cpuTime     += cpuEndTime - cpuStartTime
+                elapsedTime += elapsedEndTime - elapsedStartTime
+                #output(cpuEndTime, elapsedEndTime)
+
+                send(('done',), to= monitor)
+                #print ("Done sent to monitor")
+
+            cpuTime=float(cpuTime/nrun)
+            elapsedTime=float(elapsedTime/nrun)
+            LossRateCPU[nWaitValue]=cpuTime
+            LossRateELAPSED[nWaitValue]=elapsedTime
+            file.write (" Avg CPU time : %f\n" %cpuTime)
+            file.write (" Avg Elapsed time : %f\n" %elapsedTime)
+            if nrun != 1:
+                file.write (" Standard devaiton of CPU time : %f" %stdev(cputime1))
+                file.write (" Standard devaiton of Elapsed Time : %f" %stdev(etime1))
+
+
+
+        lists = sorted(LossRateCPU.items()) # sorted by key, return a list of tuples
+        x, y = zip(*lists) # unpack a list of pairs into two tuples
+        plt1.plot(x, y, label="WaitDelayAvgCPUTime")
+    
+        lists2 = sorted(LossRateELAPSED.items()) # sorted by key, return a list of tuples
+        a, b = zip(*lists2) # unpack a list of pairs into two tuples
+        plt2.plot(a, b, label="WaitDelayAvgELAPSEDTime")
+
+    #plt1.ylim[0, 0.75]
+    plt1.legend(["BasicPaxosCPUTime", "BasicPaxosELAPSEDTime", "PremeptionCPUTime", "PreemptionELAPSEDTime"], loc = "upper left",prop= {'size':5})
+    filename = 'wait_results/' + 'WaitDelay.png'
+    plt1.savefig(filename)
+
+    file.write("\n************************************************************************************************************\n")
+
+    file.flush()
+    file.close()
+   
+     
+
+  
